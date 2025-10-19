@@ -14,8 +14,7 @@
 "paths": {
 "@core/*": ["src/core/*"],
 "@scenes/*": ["src/scenes/*"],
-"@ui/*": ["src/ui/*"],
-"@utils/*": ["src/utils/*"]
+"@ui/*": ["src/ui/*"]
 }
 },
 "include": ["src"]
