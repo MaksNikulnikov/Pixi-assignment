@@ -8,6 +8,8 @@ export default defineConfig({
       "@core": resolve(__dirname, "src/core"),
       "@scenes": resolve(__dirname, "src/scenes"),
       "@ui": resolve(__dirname, "src/ui"),
+      "@config": resolve(__dirname, "src/config"),
+      "@cards": resolve(__dirname, "src/cards"),
     },
   },
   build: {

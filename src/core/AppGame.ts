@@ -1,29 +1,67 @@
-import { Application } from "pixi.js";
+import * as PIXI from "pixi.js";
+import gsap from "gsap";
 import { SceneManager } from "@core/SceneManager";
 import { MenuScene } from "@scenes/MenuScene";
 import { AceOfShadowsScene } from "@scenes/AceOfShadowsScene";
 import { MagicWordsScene } from "@scenes/MagicWordsScene";
 import { PhoenixFlameScene } from "@scenes/PhoenixFlameScene";
 import { FpsCounter } from "@ui/FpsCounter";
+import { GAME_SIZE } from "@config/gameSize";
+import { Filter } from "pixi.js";
 
+//
+// === Constants ===
+//
+
+// UI layout
+const FPS_MARGIN = 8;
+const RESIZE_DEBOUNCE_MS = 300;
+const DEFAULT_BG_COLOR = 0x0b0b11;
+const FULLSCREEN_TEXT = "Fullscreen";
+const BACK_BUTTON_TEXT = "← Back to Menu";
+
+// Pixi defaults
+Filter.defaultResolution = Math.min(window.devicePixelRatio || 1, 2);
+
+//
+// === AppGame ===
+//
+
+/**
+ * Main application root: initializes Pixi, UI, and scene management.
+ */
 export class AppGame {
-  public readonly app: Application;
-  private scenes!: SceneManager;
+  public readonly app: PIXI.Application;
   private readonly host: HTMLElement;
+
+  private scenes!: SceneManager;
   private fps!: FpsCounter;
   private uiRoot!: HTMLDivElement;
+  private sceneRoot!: PIXI.Container;
+  private backBtn!: HTMLButtonElement;
+  private fsBtn!: HTMLButtonElement;
+
+  private isResizing = false;
+  private resizeTimeout?: number;
 
   constructor({ host }: { host: HTMLElement }) {
     this.host = host;
 
-    this.app = new Application({
-      backgroundColor: 0x0b0b11,
+    // === Pixi app ===
+    this.app = new PIXI.Application({
+      backgroundColor: DEFAULT_BG_COLOR,
       antialias: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
       resizeTo: window,
     });
 
+    // Scene container
+    this.sceneRoot = new PIXI.Container();
+    this.sceneRoot.name = "sceneRoot";
+    this.app.stage.addChild(this.sceneRoot);
+
+    // === DOM structure ===
     const wrap = document.createElement("div");
     wrap.className = "canvas-wrap";
     wrap.appendChild(this.app.view as HTMLCanvasElement);
@@ -35,70 +73,157 @@ export class AppGame {
     uiTop.className = "ui-top";
 
     const left = document.createElement("div");
-    left.className = "ui-row";
+    left.className = "ui-row left";
 
     const right = document.createElement("div");
-    right.className = "ui-row";
+    right.className = "ui-row right";
 
-    const fsBtn = document.createElement("button");
-    fsBtn.className = "ui";
-    fsBtn.textContent = "Fullscreen";
-    fsBtn.onclick = () => this.requestFullscreen();
+    // Back button
+    this.backBtn = document.createElement("button");
+    this.backBtn.className = "ui back";
+    this.backBtn.textContent = BACK_BUTTON_TEXT;
+    this.backBtn.onclick = () => this.openMenu();
+    left.appendChild(this.backBtn);
 
-    right.appendChild(fsBtn);
+    // Fullscreen button
+    this.fsBtn = document.createElement("button");
+    this.fsBtn.className = "ui fullscreen";
+    this.fsBtn.textContent = FULLSCREEN_TEXT;
+    this.fsBtn.onclick = () => this.requestFullscreen();
+    right.appendChild(this.fsBtn);
+
     uiTop.append(left, right);
     this.uiRoot.appendChild(uiTop);
+    wrap.appendChild(this.uiRoot);
+    this.host.appendChild(wrap);
 
-    this.host.append(wrap, this.uiRoot);
-
-    this.app.stage.sortableChildren = true;
+    // === FPS Counter ===
     this.fps = new FpsCounter();
-    this.fps.position.set(8, 8);
+    this.fps.position.set(FPS_MARGIN, FPS_MARGIN);
     (this.fps as any).zIndex = 9999;
     this.app.stage.addChild(this.fps);
 
-    const firstTap = () => {
-      this.requestFullscreen();
-      window.removeEventListener("pointerdown", firstTap);
-    };
-    window.addEventListener("pointerdown", firstTap, { once: true });
+    // === Scene Manager ===
+    this.scenes = new SceneManager(this.app, this.sceneRoot);
+    this.openMenu();
 
-    this.scenes = new SceneManager(this.app);
-
-    const openMenu = () =>
-      this.scenes.set(
-        new MenuScene(
-          () => this.scenes.set(new AceOfShadowsScene(openMenu)),
-          () => this.scenes.set(new MagicWordsScene(openMenu)),
-          () => this.scenes.set(new PhoenixFlameScene(openMenu))
-        )
-      );
-    openMenu();
-
-    const notifySceneResize = () => {
-      const current = this.scenes?.scene as any;
-      if (current?.view && typeof current.view._onResize === "function") {
-        current.view._onResize();
-      }
-    };
-
-    notifySceneResize();
-
-    window.addEventListener("resize", () => {
-      requestAnimationFrame(notifySceneResize);
-    });
+    // === Events ===
+    window.addEventListener("resize", () => this.handleResize());
+    this.resizeSceneToWindow();
 
     this.app.ticker.add(() => {
       this.fps.update(performance.now(), this.app.ticker.FPS);
     });
 
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        openMenu();
-        requestAnimationFrame(notifySceneResize);
-      }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) this.pauseAll();
+      else this.resumeAll();
+    });
+
+    window.addEventListener("blur", () => {
+      if (!this.isResizing) this.pauseAll();
+    });
+
+    window.addEventListener("focus", () => {
+      this.resumeAll();
+    });
+
+    // Ensure animations resume after manual resize
+    this.app.renderer.on("resize", () => {
+      if (gsap.globalTimeline.paused()) this.resumeAll();
     });
   }
+
+  //
+  // === Scene management ===
+  //
+
+  private openMenu() {
+    const scene = new MenuScene(
+      () => this.openScene(new AceOfShadowsScene()),
+      () => this.openScene(new MagicWordsScene()),
+      () => this.openScene(new PhoenixFlameScene())
+    );
+    this.scenes.set(scene);
+    this.updateUiForMenuScene();
+    this.updateBackground(scene);
+  }
+
+  private openScene(scene: any) {
+    this.scenes.set(scene);
+    this.updateUiForGameScene();
+    this.updateBackground(scene);
+  }
+
+  /** Updates Pixi and page background color to match active scene */
+  private updateBackground(scene: any) {
+    const color = scene?.bgColor ?? DEFAULT_BG_COLOR;
+    this.app.renderer.background.color = color;
+    document.body.style.backgroundColor = `#${color.toString(16).padStart(6, "0")}`;
+  }
+
+  private updateUiForGameScene() {
+    this.backBtn.style.display = "inline-block";
+  }
+
+  private updateUiForMenuScene() {
+    this.backBtn.style.display = "none";
+  }
+
+  //
+  // === Resize handling ===
+  //
+
+  private handleResize() {
+    this.isResizing = true;
+    clearTimeout(this.resizeTimeout);
+    this.resizeTimeout = window.setTimeout(() => {
+      this.isResizing = false;
+    }, RESIZE_DEBOUNCE_MS);
+
+    requestAnimationFrame(() => this.resizeSceneToWindow());
+  }
+
+  private resizeSceneToWindow() {
+    const vw = GAME_SIZE.WIDTH;
+    const vh = GAME_SIZE.HEIGHT;
+    const ww = window.innerWidth;
+    const wh = window.innerHeight;
+
+    const scale = Math.min(ww / vw, wh / vh);
+    const x = (ww - vw * scale) / 2;
+    const y = (wh - vh * scale) / 2;
+
+    this.sceneRoot.scale.set(scale);
+    this.sceneRoot.position.set(x, y);
+  }
+
+  //
+  // === Lifecycle (pause/resume) ===
+  //
+
+  private pauseAll() {
+    this.app.ticker.stop();
+    gsap.globalTimeline.pause();
+
+    const scene: any = this.scenes?.scene;
+    if (scene?.timer) {
+      clearInterval(scene.timer);
+      scene.timer = undefined;
+    }
+  }
+
+  private resumeAll() {
+    this.app.ticker.start();
+    gsap.globalTimeline.resume();
+
+    const scene: any = this.scenes?.scene;
+    if (scene?.startCycle) scene.startCycle();
+  }
+
+  //
+  // === Fullscreen ===
+  //
 
   private async requestFullscreen() {
     const el: any = document.documentElement;
@@ -106,7 +231,7 @@ export class AppGame {
       try {
         await el.requestFullscreen({ navigationUI: "hide" });
       } catch {
-        /* noop */
+        /* ignored */
       }
     }
   }

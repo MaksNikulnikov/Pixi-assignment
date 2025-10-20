@@ -1,9 +1,10 @@
+import { BACKGROUND_COLORS } from "@config/backgroundColors";
 import { BaseScene } from "@scenes/BaseScene";
 import type { Application } from "pixi.js";
 
 export class MagicWordsScene extends BaseScene {
-  constructor(onBack: () => void) {
-    super("Magic Words — WIP", 0x10161f, onBack);
+  constructor() {
+    super(BACKGROUND_COLORS.TWO);
   }
 
   override onEnter(app: Application) {

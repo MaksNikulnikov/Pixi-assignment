@@ -1,6 +1,7 @@
-import { Container, Graphics, Text, TextStyle, Application } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { IScene } from "@core/Scene";
 import { Button } from "@ui/Button";
+import { GAME_SIZE } from "@config/gameSize";
 
 export class MenuScene implements IScene {
   public readonly view = new Container();
@@ -11,22 +12,13 @@ export class MenuScene implements IScene {
     private onOpenPhoenix: () => void
   ) {}
 
-  onEnter(app: Application) {
+  onEnter() {
     const bg = new Graphics();
     this.view.addChild(bg);
 
-    const title = new Text(
-      "Pixi Assignment",
-      new TextStyle({
-        fill: 0xffffff,
-        fontSize: 28,
-        fontWeight: "800",
-        letterSpacing: 1,
-        fontFamily: "Inter, sans-serif",
-      })
-    );
-    title.anchor.set(0.5);
-    this.view.addChild(title);
+    bg.beginFill(0x0b0b11);
+    bg.drawRect(0, 0, GAME_SIZE.WIDTH, GAME_SIZE.HEIGHT);
+    bg.endFill();
 
     const btnAce = new Button("1) Ace of Shadows");
     const btnMagic = new Button("2) Magic Words");
@@ -39,27 +31,16 @@ export class MenuScene implements IScene {
     btnMagic.on("pointerup", this.onOpenMagic);
     btnPhoenix.on("pointerup", this.onOpenPhoenix);
 
-    const onResize = () => {
-      const { width, height } = app.renderer.screen;
+    const buttonHeight = 56;
+    const totalHeight = buttons.length * buttonHeight;
+    const startY = GAME_SIZE.HEIGHT / 2 - totalHeight / 2;
 
-      bg.clear();
-      bg.beginFill(0x0b0b11);
-      bg.drawRect(0, 0, width, height);
-      bg.endFill();
-
-      title.position.set(width / 2, height * 0.15);
-
-      const buttonHeight = 56;
-      const totalHeight = buttons.length * buttonHeight;
-      const startY = height / 2 - totalHeight / 2;
-
-      buttons.forEach((b, i) => {
-        b.position.set(width / 2 - b.width / 2, startY + i * buttonHeight);
-      });
-    };
-
-    (this.view as any)._onResize = onResize;
-    onResize();
+    buttons.forEach((b, i) => {
+      b.position.set(
+        GAME_SIZE.WIDTH / 2 - b.width / 2,
+        startY + i * buttonHeight
+      );
+    });
   }
 
   onExit() {}
