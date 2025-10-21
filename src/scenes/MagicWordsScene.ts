@@ -1,13 +1,136 @@
-import { BACKGROUND_COLORS } from "@config/backgroundColors";
+import { Application, Assets, Container, Graphics, Texture } from "pixi.js";
 import { BaseScene } from "@scenes/BaseScene";
-import type { Application } from "pixi.js";
+import { BACKGROUND_COLORS } from "@config/backgroundColors";
+import { GAME_SIZE } from "@config/gameSize";
+import { fetchMagicWordsData } from "@services/fetchMagicWords";
+import { DialogueBubble } from "@ui/DialogueBubble";
 
 export class MagicWordsScene extends BaseScene {
+  // === Layout config ===
+  private static readonly CONFIG = {
+    DIALOG_SPACING: 110,
+    DIALOG_OFFSET_X: 160,
+    SCROLL_TOP: 50,
+    SCROLL_PADDING: 80,
+    MASK_EXTRA_MARGIN: 260,
+  } as const;
+
+  private scrollContainer = new Container();
+  private maskGfx = new Graphics();
+
+  private scrollY = 0;
+  private isDragging = false;
+  private dragStartY = 0;
+
   constructor() {
     super(BACKGROUND_COLORS.TWO);
   }
 
-  override onEnter(app: Application) {
+  async onEnter(app: Application) {
     super.onEnter(app);
+    this.view.addChild(this.maskGfx, this.scrollContainer);
+
+    const data = await fetchMagicWordsData();
+
+    const emojiMap = new Map<string, Texture>();
+    const avatarMap = new Map<
+      string,
+      { texture: Texture; pos: "left" | "right" }
+    >();
+
+    // === Load emojis (Texture.fromURL handles direct image links) ===
+    for (const e of data.emojies) {
+      try {
+        const tex = await Texture.fromURL(e.url);
+        emojiMap.set(e.name, tex);
+      } catch {
+        console.warn(`[MagicWordsScene] Failed to load emoji "${e.name}"`);
+      }
+    }
+
+    // === Load avatars ===
+    for (const a of data.avatars) {
+      try {
+        const tex = await Texture.fromURL(a.url);
+        avatarMap.set(a.name, {
+          texture: tex,
+          pos: a.position as "left" | "right",
+        });
+      } catch {
+        console.warn(`[MagicWordsScene] Failed to load avatar "${a.name}"`);
+      }
+    }
+
+    // === Render dialogue ===
+    const C = MagicWordsScene.CONFIG;
+    let y = 0;
+    for (const d of data.dialogue) {
+      const avatarInfo = avatarMap.get(d.name);
+      const bubble = new DialogueBubble(d.name, d.text, avatarInfo, emojiMap);
+      bubble.y = y;
+      bubble.x =
+        avatarInfo?.pos === "left" ? -C.DIALOG_OFFSET_X : C.DIALOG_OFFSET_X;
+      this.scrollContainer.addChild(bubble);
+      y += C.DIALOG_SPACING;
+    }
+
+    this.createScrollMask();
+    this.enableScroll();
+  }
+
+  /** Creates horizontal mask area allowing avatars to extend beyond the viewport */
+  private createScrollMask() {
+    const { WIDTH, HEIGHT } = GAME_SIZE;
+    const C = MagicWordsScene.CONFIG;
+
+    this.maskGfx.clear();
+    this.maskGfx.beginFill(0xffffff);
+    this.maskGfx.drawRect(
+      -WIDTH / 2 - C.MASK_EXTRA_MARGIN,
+      0,
+      WIDTH + C.MASK_EXTRA_MARGIN * 2,
+      HEIGHT
+    );
+    this.maskGfx.endFill();
+
+    this.scrollContainer.mask = this.maskGfx;
+    this.scrollContainer.x = WIDTH / 2;
+    this.scrollContainer.y = C.SCROLL_TOP;
+  }
+
+  /** Enables vertical scroll by dragging */
+  private enableScroll() {
+    const onPointerDown = (e: PointerEvent) => {
+      this.isDragging = true;
+      this.dragStartY = e.clientY;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!this.isDragging) return;
+      const dy = e.clientY - this.dragStartY;
+      this.dragStartY = e.clientY;
+      this.scrollY += dy;
+      this.applyScrollBounds();
+    };
+
+    const onPointerUp = () => {
+      this.isDragging = false;
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
+  /** Keeps scroll position within valid bounds */
+  private applyScrollBounds() {
+    const C = MagicWordsScene.CONFIG;
+    const minY = -Math.max(
+      0,
+      this.scrollContainer.height - GAME_SIZE.HEIGHT + C.SCROLL_PADDING
+    );
+    const maxY = C.SCROLL_TOP;
+    this.scrollY = Math.max(minY, Math.min(maxY, this.scrollY));
+    this.scrollContainer.y = this.scrollY;
   }
 }

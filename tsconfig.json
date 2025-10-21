@@ -16,6 +16,7 @@
 "@scenes/*": ["src/scenes/*"],
 "@ui/*": ["src/ui/*"],
 "@config/*": ["src/config/*"],
+"@services/*": ["src/services/*"],
 "@cards/*": ["src/cards/*"]
 }
 },
