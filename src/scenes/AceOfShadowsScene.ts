@@ -63,8 +63,8 @@ export class AceOfShadowsScene extends BaseScene {
     super(BACKGROUND_COLORS.ONE);
   }
 
-  override onEnter(app: Application) {
-    super.onEnter(app);
+  override onEnter() {
+    super.onEnter();
 
     // === Card factory ===
     this.factory = new CardFactory();

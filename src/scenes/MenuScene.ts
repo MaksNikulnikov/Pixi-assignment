@@ -43,6 +43,7 @@ export class MenuScene implements IScene {
     buttons.forEach((b, i) => {
       b.position.set(GAME_SIZE.WIDTH / 2 - b.width / 2, startY + i * buttonHeight);
     });
+    this.onResize();
   }
   
   onResize(){

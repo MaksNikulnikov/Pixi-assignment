@@ -9,7 +9,7 @@ export class BaseScene implements IScene {
 
   constructor(protected bgColor: number) {}
 
-  onEnter(app: Application) {
+  onEnter() {
     this.view.addChild(this.bg);
 
     this.bg.beginFill(this.bgColor);

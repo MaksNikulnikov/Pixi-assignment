@@ -26,8 +26,8 @@ export class MagicWordsScene extends BaseScene {
     super(BACKGROUND_COLORS.TWO);
   }
 
-  async onEnter(app: Application) {
-    super.onEnter(app);
+  async onEnter() {
+    super.onEnter();
     this.view.addChild(this.maskGfx, this.scrollContainer);
 
     const data = await fetchMagicWordsData();
@@ -76,6 +76,7 @@ export class MagicWordsScene extends BaseScene {
 
     this.createScrollMask();
     this.enableScroll();
+    this.onResize();
   }
 
   /** Creates horizontal mask area allowing avatars to extend beyond the viewport */
