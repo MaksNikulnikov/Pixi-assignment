@@ -21,6 +21,7 @@ export class MagicWordsScene extends BaseScene {
   private scrollY = 0;
   private isDragging = false;
   private dragStartY = 0;
+  private _isActive = false;
 
   constructor() {
     super(BACKGROUND_COLORS.TWO);
@@ -28,9 +29,11 @@ export class MagicWordsScene extends BaseScene {
 
   async onEnter() {
     super.onEnter();
+    this._isActive = true;
     this.view.addChild(this.maskGfx, this.scrollContainer);
 
     const data = await fetchMagicWordsData();
+    if (!this._isActive) return; 
 
     const emojiMap = new Map<string, Texture>();
     const avatarMap = new Map<
@@ -42,6 +45,7 @@ export class MagicWordsScene extends BaseScene {
     for (const e of data.emojies) {
       try {
         const tex = await Texture.fromURL(e.url);
+        if (!this._isActive) return; 
         emojiMap.set(e.name, tex);
       } catch {
         console.warn(`[MagicWordsScene] Failed to load emoji "${e.name}"`);
@@ -52,6 +56,7 @@ export class MagicWordsScene extends BaseScene {
     for (const a of data.avatars) {
       try {
         const tex = await Texture.fromURL(a.url);
+        if (!this._isActive) return; 
         avatarMap.set(a.name, {
           texture: tex,
           pos: a.position as "left" | "right",
@@ -99,14 +104,12 @@ export class MagicWordsScene extends BaseScene {
     this.scrollContainer.y = C.SCROLL_TOP;
   }
 
-  /** Enables vertical scroll by dragging */
-  private enableScroll() {
-    const onPointerDown = (e: PointerEvent) => {
+   private onPointerDown = (e: PointerEvent) => {
       this.isDragging = true;
       this.dragStartY = e.clientY;
     };
 
-    const onPointerMove = (e: PointerEvent) => {
+    private onPointerMove = (e: PointerEvent) => {
       if (!this.isDragging) return;
       const dy = e.clientY - this.dragStartY;
       this.dragStartY = e.clientY;
@@ -114,13 +117,15 @@ export class MagicWordsScene extends BaseScene {
       this.applyScrollBounds();
     };
 
-    const onPointerUp = () => {
+    private onPointerUp = () => {
       this.isDragging = false;
     };
 
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
+  /** Enables vertical scroll by dragging */
+  private enableScroll() {
+    window.addEventListener("pointerdown", this.onPointerDown);
+    window.addEventListener("pointermove", this.onPointerMove);
+    window.addEventListener("pointerup", this.onPointerUp);
   }
 
   /** Keeps scroll position within valid bounds */
@@ -172,4 +177,18 @@ export class MagicWordsScene extends BaseScene {
       this.view.position.set(x, y);
     }
   }
+
+  override onExit() {
+  this._isActive = false;
+
+  window.removeEventListener("pointerdown", this.onPointerDown);
+  window.removeEventListener("pointermove", this.onPointerMove);
+  window.removeEventListener("pointerup", this.onPointerUp);
+
+  this.scrollContainer.removeChildren();
+  this.view.removeChildren();
+  this.maskGfx.destroy(true);
+  this.scrollContainer.destroy({ children: true });
+}
+
 }
