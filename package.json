@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@pixi/filter-drop-shadow": "^5.2.0",
-    "gsap": "^3.13.0",
     "pixi.js": "^7.4.0"
   }
 }

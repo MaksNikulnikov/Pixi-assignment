@@ -1,12 +1,10 @@
 import * as PIXI from "pixi.js";
-import gsap from "gsap";
 import { SceneManager } from "@core/SceneManager";
 import { MenuScene } from "@scenes/MenuScene";
 import { AceOfShadowsScene } from "@scenes/AceOfShadowsScene";
 import { MagicWordsScene } from "@scenes/MagicWordsScene";
 import { PhoenixFlameScene } from "@scenes/PhoenixFlameScene";
 import { FpsCounter } from "@ui/FpsCounter";
-import { GAME_SIZE } from "@config/gameSize";
 import { Filter } from "pixi.js";
 
 //
@@ -130,7 +128,7 @@ export class AppGame {
 
     // Ensure animations resume after manual resize
     this.app.renderer.on("resize", () => {
-      if (gsap.globalTimeline.paused()) this.resumeAll();
+      if (!this.app.ticker.started) this.resumeAll();
     });
   }
 
@@ -203,8 +201,6 @@ export class AppGame {
 
   private pauseAll() {
     this.app.ticker.stop();
-    gsap.globalTimeline.pause();
-
     const scene: any = this.scenes?.scene;
     if (scene?.timer) {
       clearInterval(scene.timer);
@@ -214,7 +210,6 @@ export class AppGame {
 
   private resumeAll() {
     this.app.ticker.start();
-    gsap.globalTimeline.resume();
 
     const scene: any = this.scenes?.scene;
     if (scene?.startCycle) scene.startCycle();
