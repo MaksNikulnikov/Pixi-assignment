@@ -1,0 +1,33 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Build / cache
+build/
+.vite/
+.cache/
+.tmp/
+.temp/
+*.tsbuildinfo
+.eslintcache
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage / reports
+coverage/
+playwright-report/
