@@ -185,18 +185,17 @@ export class AppGame {
   }
 
   private resizeSceneToWindow() {
-    const vw = GAME_SIZE.WIDTH;
-    const vh = GAME_SIZE.HEIGHT;
-    const ww = window.innerWidth;
-    const wh = window.innerHeight;
+  const ww = window.innerWidth;
+  const wh = window.innerHeight;
 
-    const scale = Math.min(ww / vw, wh / vh);
-    const x = (ww - vw * scale) / 2;
-    const y = (wh - vh * scale) / 2;
-
-    this.sceneRoot.scale.set(scale);
-    this.sceneRoot.position.set(x, y);
+  this.sceneRoot.scale.set(1);
+  this.sceneRoot.position.set(0, 0);
+  this.app.renderer.resize(ww, wh);
+  const activeScene: any = this.scenes?.scene;
+  if (activeScene && typeof activeScene.onResize === "function") {
+    activeScene.onResize(ww, wh);
   }
+}
 
   //
   // === Lifecycle (pause/resume) ===
