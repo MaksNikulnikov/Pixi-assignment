@@ -157,7 +157,9 @@ export class AppGame {
   private updateBackground(scene: any) {
     const color = scene?.bgColor ?? DEFAULT_BG_COLOR;
     this.app.renderer.background.color = color;
-    document.body.style.backgroundColor = `#${color.toString(16).padStart(6, "0")}`;
+    document.body.style.backgroundColor = `#${color
+      .toString(16)
+      .padStart(6, "0")}`;
   }
 
   private updateUiForGameScene() {
@@ -183,17 +185,17 @@ export class AppGame {
   }
 
   private resizeSceneToWindow() {
-  const ww = window.innerWidth;
-  const wh = window.innerHeight;
+    const ww = window.innerWidth;
+    const wh = window.innerHeight;
 
-  this.sceneRoot.scale.set(1);
-  this.sceneRoot.position.set(0, 0);
-  this.app.renderer.resize(ww, wh);
-  const activeScene: any = this.scenes?.scene;
-  if (activeScene && typeof activeScene.onResize === "function") {
-    activeScene.onResize(ww, wh);
+    this.sceneRoot.scale.set(1);
+    this.sceneRoot.position.set(0, 0);
+    this.app.renderer.resize(ww, wh);
+    const activeScene: any = this.scenes?.scene;
+    if (activeScene && typeof activeScene.onResize === "function") {
+      activeScene.onResize(ww, wh);
+    }
   }
-}
 
   //
   // === Lifecycle (pause/resume) ===
@@ -220,12 +222,23 @@ export class AppGame {
   //
 
   private async requestFullscreen() {
-    const el: any = document.documentElement;
-    if (!document.fullscreenElement && el.requestFullscreen) {
+    const el: any = this.app.view;
+    const req =
+      el.requestFullscreen ||
+      el.webkitRequestFullscreen ||
+      el.msRequestFullscreen ||
+      el.mozRequestFullScreen;
+
+    if (!document.fullscreenElement && req) {
       try {
-        await el.requestFullscreen({ navigationUI: "hide" });
-      } catch {
-        /* ignored */
+        await req.call(el, { navigationUI: "hide" });
+      } catch (e) {
+        console.warn("Fullscreen not supported:", e);
+
+        el.style.position = "fixed";
+        el.style.inset = "0";
+        el.style.width = "100%";
+        el.style.height = "100%";
       }
     }
   }
