@@ -1,4 +1,4 @@
-import { Application, Assets, Container, Graphics, Texture } from "pixi.js";
+import { Container, Graphics, Texture } from "pixi.js";
 import { BaseScene } from "@scenes/BaseScene";
 import { BACKGROUND_COLORS } from "@config/backgroundColors";
 import { GAME_SIZE } from "@config/gameSize";
@@ -133,5 +133,43 @@ export class MagicWordsScene extends BaseScene {
     const maxY = C.SCROLL_TOP;
     this.scrollY = Math.max(minY, Math.min(maxY, this.scrollY));
     this.scrollContainer.y = this.scrollY;
+  }
+
+  onResize() {
+    const vw = GAME_SIZE.WIDTH;
+    const vh = GAME_SIZE.HEIGHT;
+    const ww = window.innerWidth;
+    const wh = window.innerHeight;
+    const isPortrait = wh > ww;
+
+    if (isPortrait) {
+      const scale = ww / vw;
+      const chatHeight = wh * 3;
+      const offsetY = wh * 0.12;
+
+      this.view.scale.set(scale);
+      this.view.position.set((ww - vw * scale) / 2, offsetY);
+
+      const C = MagicWordsScene.CONFIG;
+      this.maskGfx.clear();
+      this.maskGfx.beginFill(0xffffff);
+      this.maskGfx.drawRect(
+        -ww / 2 - C.MASK_EXTRA_MARGIN,
+        0,
+        (ww + C.MASK_EXTRA_MARGIN) * 2,
+        chatHeight
+      );
+      this.maskGfx.endFill();
+
+      this.scrollContainer.mask = this.maskGfx;
+    } else {
+      // 🟦 Landscape mode — use default layout rules
+      const scale = Math.min(ww / vw, wh / vh);
+      const x = (ww - vw * scale) / 2;
+      const y = (wh - vh * scale) / 2;
+
+      this.view.scale.set(scale);
+      this.view.position.set(x, y);
+    }
   }
 }
