@@ -1,5 +1,4 @@
-import { Application, Container, Sprite, Texture } from "pixi.js";
-import gsap from "gsap";
+import { Container, Sprite, Texture } from "pixi.js";
 import { DropShadowFilter } from "@pixi/filter-drop-shadow";
 import { BaseScene } from "@scenes/BaseScene";
 import { GAME_SIZE } from "@config/gameSize";
@@ -14,8 +13,11 @@ import { CardFactory } from "@cards/CardFactory";
 const STACK_COUNT = 12;
 const TOTAL_AMOUNT = 144;
 const CARD_SCALE = 1;
-const OFFSET_Y_PCT = 0.02;
+const OFFSET_Y_PCT = 0.05;
 const RADIUS = 180;
+
+// Layout smoothing
+const STACK_ADJUST_DURATION = 0.4; // seconds
 
 // Animation
 const MOVE_INTERVAL_MS = 1000;
@@ -23,6 +25,16 @@ const FLIGHT_DURATION = 2;
 const ARC_MIN = 120;
 const ARC_VARIATION = 40;
 const SIDE_OFFSET = 40;
+
+// Easings
+const easeOutExpo = (t: number): number =>
+  t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+
+const easeOutSine = (t: number): number =>
+  Math.sin((t * Math.PI) / 2);
+
+const CARD_MOVE_EASING = easeOutExpo;
+const STACK_EASING = easeOutSine;
 
 // Visual
 const SHADOW_COLOR = 0x000000;
@@ -32,8 +44,8 @@ const SHADOW_ALPHA = 0.6;
 // Cards
 const SUITS = ["spade", "heart", "diamond", "club"] as const;
 const RANKS = ["A", "K", "Q", "J", "10", "9", "8", "7", "6"] as const;
-type SuitKey = typeof SUITS[number];
-type RankKey = typeof RANKS[number];
+type SuitKey = (typeof SUITS)[number];
+type RankKey = (typeof RANKS)[number];
 
 //
 // === Scene ===
@@ -46,61 +58,76 @@ export class AceOfShadowsScene extends BaseScene {
   private nextTargets: number[][] = [];
 
   private timer?: number;
+  private _rafId?: number;
+  private _boundUpdate = this.update.bind(this);
+
   private activeStackIndex = 0;
   private nextTargetStep = 0;
+
+  private flyingCards: {
+    card: Sprite;
+    fromIndex: number;
+    toIndex: number;
+    startTime: number;
+    duration: number;
+    startPos: { x: number; y: number };
+    endPos: () => { x: number; y: number };
+    startRot: number;
+    endRot: number;
+    arcHeight: number;
+    shadow: DropShadowFilter;
+  }[] = [];
 
   constructor() {
     super(BACKGROUND_COLORS.ONE);
   }
 
+  //
   // === Lifecycle ===
+  //
   override onEnter() {
     super.onEnter();
 
-    // Prepare angles
     const angles = this.getStackAngles(STACK_COUNT);
-
-    // Init factory
     this.factory = new CardFactory();
     const deckTextures = this.factory.createDeckTextures();
 
-    // Create stack containers
     this.initStacks(STACK_COUNT);
-
-    // Create and distribute cards
     this.fillStacks(deckTextures);
-
-    // Prepare movement matrix
     this.prepareTargets(STACK_COUNT);
 
-    // Bind resize handler
+    // Responsive layout
     const baseResize = (this.view as any)._onResize;
     (this.view as any)._onResize = () => {
       baseResize?.();
       const cardHeight = (this.factory as any).style.height;
       this.layoutStacks(cardHeight, angles);
     };
-    (this.view as any)._onResize();
+    (this.view as any)._onResize?.();
 
-    // Start animation cycle
     this.startCycle();
+    this._rafId = requestAnimationFrame(this._boundUpdate);
   }
 
   override onExit() {
     if (this.timer) clearInterval(this.timer);
+    if (this._rafId) cancelAnimationFrame(this._rafId);
+
+    this.flyingCards.length = 0;
+    this.stacks.forEach((s) => s.destroy({ children: true }));
+    this.stacks = [];
+    this.decks = [];
   }
 
   //
-  // === Init helpers ===
+  // === Setup ===
   //
 
-  /** Evenly spaced angles around a circle */
   private getStackAngles(count: number): number[] {
     const step = (Math.PI * 2) / count;
     return Array.from({ length: count }, (_, i) => -Math.PI / 2 + i * step);
   }
 
-  /** Create empty stack containers */
   private initStacks(count: number) {
     for (let i = 0; i < count; i++) {
       const stack = new Container();
@@ -110,10 +137,7 @@ export class AceOfShadowsScene extends BaseScene {
     }
   }
 
-  /** Fill stacks with TOTAL_AMOUNT cards, evenly distributed */
-  private fillStacks(
-    deckTextures: Record<SuitKey, Record<RankKey, Texture>>
-  ) {
+  private fillStacks(deckTextures: Record<SuitKey, Record<RankKey, Texture>>) {
     const baseCards = SUITS.flatMap((suit) =>
       RANKS.map((rank) => ({ suit, rank }))
     );
@@ -128,7 +152,7 @@ export class AceOfShadowsScene extends BaseScene {
       allCards.push(card);
     }
 
-    // Shuffle and distribute
+    // Shuffle and distribute evenly
     allCards.sort(() => Math.random() - 0.5);
     allCards.forEach((card, i) => {
       const stackIndex = i % STACK_COUNT;
@@ -137,7 +161,6 @@ export class AceOfShadowsScene extends BaseScene {
     });
   }
 
-  /** Precompute cyclic target indices for each stack */
   private prepareTargets(count: number) {
     this.nextTargets = Array.from({ length: count }, (_, i) =>
       Array.from({ length: count - 1 }, (_, j) => (i + j + 1) % count)
@@ -156,7 +179,10 @@ export class AceOfShadowsScene extends BaseScene {
     for (let i = 0; i < STACK_COUNT; i++) {
       const stack = this.stacks[i];
       const angle = angles[i];
-      stack.position.set(cx + Math.cos(angle) * RADIUS, cy + Math.sin(angle) * RADIUS);
+      stack.position.set(
+        cx + Math.cos(angle) * RADIUS,
+        cy + Math.sin(angle) * RADIUS
+      );
       stack.rotation = angle + Math.PI / 2;
 
       const cards = this.decks[i];
@@ -174,28 +200,47 @@ export class AceOfShadowsScene extends BaseScene {
     const stack = this.stacks[index];
     const cards = this.decks[index];
 
-    cards.forEach((c, i) => {
-      if (c.parent !== stack) return;
-      c.position.set(0, -(cards.length - 1 - i) * yStep);
-      stack.setChildIndex(c, i);
-    });
+    const startTime = performance.now();
+    const duration = STACK_ADJUST_DURATION * 1000;
+    const startPositions = cards.map((c) => c.y);
+    const targetPositions = cards.map(
+      (_, i) => -(cards.length - 1 - i) * yStep
+    );
+
+    const animate = (now: number) => {
+      const t = Math.min((now - startTime) / duration, 1);
+      const eased = STACK_EASING(t);
+
+      for (let i = 0; i < cards.length; i++) {
+        const c = cards[i];
+        if (c.parent !== stack) continue;
+        const newY =
+          startPositions[i] +
+          (targetPositions[i] - startPositions[i]) * eased;
+        c.x = 0;
+        c.y = newY;
+        stack.setChildIndex(c, i);
+      }
+
+      if (t < 1) requestAnimationFrame(animate);
+    };
+
+    requestAnimationFrame(animate);
   }
 
   //
-  // === Animation cycle ===
+  // === Animation Loop ===
   //
 
   private startCycle() {
     if (this.timer) return;
 
     this.timer = window.setInterval(() => {
-      if (gsap.globalTimeline.paused()) return;
-
       const src = this.activeStackIndex;
       const targets = this.nextTargets[src];
       const target = targets[this.nextTargetStep];
 
-      this.transferCard(src, target);
+      this.launchCard(src, target);
 
       this.nextTargetStep = (this.nextTargetStep + 1) % targets.length;
       if (this.decks[src].length === 0) {
@@ -205,7 +250,7 @@ export class AceOfShadowsScene extends BaseScene {
     }, MOVE_INTERVAL_MS);
   }
 
-  private transferCard(fromIndex: number, toIndex: number) {
+  private launchCard(fromIndex: number, toIndex: number) {
     const sourceDeck = this.decks[fromIndex];
     if (sourceDeck.length === 0) return;
 
@@ -229,7 +274,7 @@ export class AceOfShadowsScene extends BaseScene {
     });
     card.filters = [shadow];
 
-    const start = card.position.clone();
+    const startPos = { x: card.position.x, y: card.position.y };
     const arcHeight = ARC_MIN + Math.random() * ARC_VARIATION;
 
     const getEndLocal = () => {
@@ -240,51 +285,83 @@ export class AceOfShadowsScene extends BaseScene {
       return this.view.toLocal(endGlobal);
     };
 
-    const t = { p: 0 };
-    gsap.to(t, {
-      p: 1,
-      duration: FLIGHT_DURATION,
-      ease: "expo.out",
-      onUpdate: () => {
-        const prog = t.p;
-        const end = getEndLocal();
-
-        const xLinear = start.x + (end.x - start.x) * prog;
-        const yLinear = start.y + (end.y - start.y) * prog;
-        const y = yLinear - arcHeight * Math.sin(prog * Math.PI);
-
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const side = Math.abs(dx) < Math.abs(dy) * 0.5 ? (fromIndex % 2 === 0 ? -1 : 1) : 0;
-        const x = xLinear + SIDE_OFFSET * side * Math.sin(prog * Math.PI);
-
-        card.position.set(x, y);
-        card.rotation = startRot + (endRot - startRot) * prog;
-
-        const s = CARD_SCALE + 0.2 * Math.sin(prog * Math.PI);
-        card.scale.set(s);
-
-        shadow.alpha = SHADOW_ALPHA * Math.sin(prog * Math.PI);
-        shadow.blur = SHADOW_BLUR + 10 * Math.sin(prog * Math.PI);
-        shadow.offset.y = 5 + 10 * Math.sin(prog * Math.PI);
-      },
-      onComplete: () => {
-        const globalNow = card.parent.toGlobal(card.position);
-        const globalRot = card.rotation;
-
-        targetStack.addChild(card);
-        card.position.copyFrom(targetStack.toLocal(globalNow));
-        card.rotation = globalRot - targetStack.rotation;
-        targetDeck.push(card);
-
-        card.filters = [];
-        card.scale.set(CARD_SCALE);
-
-        this.relayoutStack(fromIndex);
-        this.relayoutStack(toIndex);
-      },
+    this.flyingCards.push({
+      card,
+      fromIndex,
+      toIndex,
+      startTime: performance.now(),
+      duration: FLIGHT_DURATION * 1000,
+      startPos,
+      endPos: getEndLocal,
+      startRot,
+      endRot,
+      arcHeight,
+      shadow,
     });
 
     this.relayoutStack(fromIndex);
+  }
+
+  private update() {
+    const now = performance.now();
+
+    for (let i = this.flyingCards.length - 1; i >= 0; i--) {
+      const f = this.flyingCards[i];
+      const elapsed = now - f.startTime;
+
+      const rawT = Math.min(elapsed / f.duration, 1);
+      const t = CARD_MOVE_EASING(rawT);
+
+      const end = f.endPos();
+
+      const xLinear = f.startPos.x + (end.x - f.startPos.x) * t;
+      const yLinear = f.startPos.y + (end.y - f.startPos.y) * t;
+      const y = yLinear - f.arcHeight * Math.sin(t * Math.PI);
+
+      const dx = end.x - f.startPos.x;
+      const dy = end.y - f.startPos.y;
+      const side =
+        Math.abs(dx) < Math.abs(dy) * 0.5
+          ? f.fromIndex % 2 === 0
+            ? -1
+            : 1
+          : 0;
+
+      const x = xLinear + SIDE_OFFSET * side * Math.sin(t * Math.PI);
+
+      f.card.position.set(x, y);
+      f.card.rotation = f.startRot + (f.endRot - f.startRot) * t;
+
+      const s = CARD_SCALE + 0.2 * Math.sin(t * Math.PI);
+      f.card.scale.set(s);
+
+      const sin = Math.sin(t * Math.PI);
+      f.shadow.alpha = SHADOW_ALPHA * sin;
+      f.shadow.blur = SHADOW_BLUR + 10 * sin;
+      f.shadow.offset.y = 5 + 10 * sin;
+
+      if (rawT >= 1) {
+        const globalNow = f.card.parent.toGlobal(f.card.position);
+        const globalRot = f.card.rotation;
+
+        const targetStack = this.stacks[f.toIndex];
+        const targetDeck = this.decks[f.toIndex];
+
+        targetStack.addChild(f.card);
+        f.card.position.copyFrom(targetStack.toLocal(globalNow));
+        f.card.rotation = globalRot - targetStack.rotation;
+        targetDeck.push(f.card);
+
+        f.card.filters = [];
+        f.card.scale.set(CARD_SCALE);
+
+        this.relayoutStack(f.fromIndex);
+        this.relayoutStack(f.toIndex);
+
+        this.flyingCards.splice(i, 1);
+      }
+    }
+
+    this._rafId = requestAnimationFrame(this._boundUpdate);
   }
 }

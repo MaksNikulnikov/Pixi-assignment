@@ -163,7 +163,10 @@ export class PhoenixFlameScene extends BaseScene {
       -(FLAME_CURVE_WIDTH + Math.random() * FLAME_CURVE_RANDOM_X),
       -(FLAME_CURVE_LOW_Y + Math.random() * FLAME_CURVE_LOW_RANDOM_Y),
       -(FLAME_CURVE_MID_X + Math.random() * FLAME_CURVE_MID_RANDOM_X),
-      -(FLAME_CURVE_TOP_Y / 1.5 + Math.random() * FLAME_CURVE_TOP_RANDOM_Y / 1.5),
+      -(
+        FLAME_CURVE_TOP_Y / 1.5 +
+        (Math.random() * FLAME_CURVE_TOP_RANDOM_Y) / 1.5
+      ),
       0,
       -(FLAME_CURVE_TOP_Y + Math.random() * FLAME_CURVE_TOP_RANDOM_Y)
     );
