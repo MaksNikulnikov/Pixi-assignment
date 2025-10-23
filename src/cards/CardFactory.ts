@@ -26,9 +26,9 @@ export interface CardStyle {
 
 // --- base style constants ---
 const DEFAULT_STYLE: CardStyle = {
-  width: 90,
-  height: 120,
-  radius: 12,
+  width: 75,
+  height: 100,
+  radius: 10,
   border: "#1f2230",
   bgTop: "#ffffff",
   bgBottom: "#e9e9ee",
