@@ -8,164 +8,120 @@ import { Texture } from "pixi.js";
 export type SuitKey = "spade" | "heart" | "diamond" | "club";
 export type RankKey = "A" | "K" | "Q" | "J" | "10" | "9" | "8" | "7" | "6";
 
-// Default visual style
+// Card visual style
 export interface CardStyle {
   width: number;
   height: number;
   radius: number;
+  bg: string;
   border: string;
-  bgTop: string;
-  bgBottom: string;
-  shadow: string;
-  gloss: string;
-  centerFont: string;
-  cornerFont: string;
-  centerStroke: string;
-  centerStrokeWidth: number;
+  fontMain: string;
+  fontCorner: string;
+  stroke: string;
+  strokeWidth: number;
 }
 
-// --- base style constants ---
 const DEFAULT_STYLE: CardStyle = {
-  width: 75,
+  width: 70,
   height: 100,
   radius: 10,
-  border: "#1f2230",
-  bgTop: "#ffffff",
-  bgBottom: "#e9e9ee",
-  shadow: "rgba(0,0,0,0.2)",
-  gloss: "rgba(255,255,255,0.35)",
-  centerFont: "900 48px Inter, system-ui, sans-serif",
-  cornerFont: "700 24px Inter, system-ui, sans-serif",
-  centerStroke: "#ffffff",
-  centerStrokeWidth: 6,
+  bg: "#ffffff",
+  border: "#000000",
+  fontMain: "900 56px Inter, system-ui, sans-serif",
+  fontCorner: "700 22px Inter, system-ui, sans-serif",
+  stroke: "#ffffff",
+  strokeWidth: 5,
 };
 
-// --- card ranks & suits ---
+// Suits & colors
+const SUITS: Record<SuitKey, { symbol: string; color: string }> = {
+  spade: { symbol: "♠", color: "#1b1b1f" },
+  club: { symbol: "♣", color: "#1b1b1f" },
+  heart: { symbol: "♥", color: "#e62424" },
+  diamond: { symbol: "♦", color: "#e62424" },
+};
+
 const RANKS: RankKey[] = ["A", "K", "Q", "J", "10", "9", "8", "7", "6"];
-
-const SUITS: Record<SuitKey, { symbol: string; color1: string; color2: string }> = {
-  spade: { symbol: "♠", color1: "#1b1b1f", color2: "#3a3a44" },
-  club: { symbol: "♣", color1: "#1b1b1f", color2: "#3a3a44" },
-  heart: { symbol: "♥", color1: "#ff2f2f", color2: "#c41616" },
-  diamond: { symbol: "♦", color1: "#ff3b3b", color2: "#cc1f1f" },
-};
 
 //
 // === CardFactory ===
 //
 
 /**
- * Generates full 36-card deck textures (6..A)
- * Each card rendered to <canvas> and cached as a Pixi Texture.
- * Heavy operations are memoized to avoid duplicate canvas draws.
+ * Minimal clean playing card generator.
+ * Produces large, legible cards optimized for small-scale rendering.
  */
 export class CardFactory {
   private cache = new Map<string, Texture>();
 
   constructor(private style: CardStyle = DEFAULT_STYLE) {}
 
-  /** Create 4×9 deck (spades, hearts, diamonds, clubs) */
+  /** Create a full 36-card deck (4 suits × 9 ranks). */
   createDeckTextures(): Record<SuitKey, Record<RankKey, Texture>> {
-    const suits: SuitKey[] = ["spade", "heart", "diamond", "club"];
     const out: Partial<Record<SuitKey, Record<RankKey, Texture>>> = {};
-
-    for (const s of suits) {
-      out[s] = {} as Record<RankKey, Texture>;
-      for (const r of RANKS) {
-        out[s]![r] = this.getOrCreate(r, s);
+    for (const suit of Object.keys(SUITS) as SuitKey[]) {
+      out[suit] = {} as Record<RankKey, Texture>;
+      for (const rank of RANKS) {
+        out[suit]![rank] = this.getOrCreate(rank, suit);
       }
     }
     return out as Record<SuitKey, Record<RankKey, Texture>>;
   }
 
-  /** Retrieve cached texture or generate a new one */
-  private getOrCreate(rank: RankKey, suitKey: SuitKey): Texture {
-    const key = `${rank}-${suitKey}`;
+  private getOrCreate(rank: RankKey, suit: SuitKey): Texture {
+    const key = `${rank}-${suit}`;
     if (this.cache.has(key)) return this.cache.get(key)!;
-    const tex = this.createCardTexture(rank, suitKey);
+    const tex = this.createCardTexture(rank, suit);
     this.cache.set(key, tex);
     return tex;
   }
 
-  /** Core drawing logic for a single card */
+  /** Draws one simplified card to canvas. */
   private createCardTexture(rank: RankKey, suitKey: SuitKey): Texture {
     const S = this.style;
     const canvas = document.createElement("canvas");
     canvas.width = S.width;
     canvas.height = S.height;
     const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, S.width, S.height);
-
     const suit = SUITS[suitKey];
-    const label = `${rank}${suit.symbol}`;
+    const text = `${rank}`;
 
-    // --- drop shadow ---
-    this.drawShadow(ctx, S);
-
-    // --- background body ---
+    // background
     this.roundedRect(ctx, 0, 0, S.width, S.height, S.radius);
-    const bg = ctx.createLinearGradient(0, 0, 0, S.height);
-    bg.addColorStop(0, S.bgTop);
-    bg.addColorStop(1, S.bgBottom);
-    ctx.fillStyle = bg;
+    ctx.fillStyle = S.bg;
     ctx.fill();
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2;
     ctx.strokeStyle = S.border;
     ctx.stroke();
 
-    // --- gloss overlay ---
-    this.drawGloss(ctx, S);
-
-    // --- corner labels ---
+    // main rank in center
     ctx.save();
-    ctx.font = S.cornerFont;
-    ctx.textBaseline = "top";
-    ctx.fillStyle = suit.color1;
-    ctx.fillText(label, 10, 6);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(S.width - 10, S.height - 6);
-    ctx.rotate(Math.PI);
-    ctx.font = S.cornerFont;
-    ctx.textBaseline = "top";
-    ctx.fillStyle = suit.color1;
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-
-    // --- center rank (number or figure) ---
-    const grad = ctx.createLinearGradient(0, S.height * 0.35, 0, S.height * 0.75);
-    grad.addColorStop(0, suit.color1);
-    grad.addColorStop(1, suit.color2);
-
-    ctx.save();
-    ctx.font = S.centerFont;
+    ctx.font = S.fontMain;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
-    ctx.lineWidth = S.centerStrokeWidth;
-    ctx.strokeStyle = S.centerStroke;
+    ctx.lineWidth = S.strokeWidth;
+    ctx.strokeStyle = S.stroke;
+    ctx.strokeText(text, S.width / 2, S.height / 2);
+    ctx.fillStyle = suit.color;
+    ctx.fillText(text, S.width / 2, S.height / 2);
+    ctx.restore();
 
-    // Center element: numeric rank or suit symbol
-    const centerY = S.height / 2 + 6;
-    const centerX = S.width / 2;
-    if (["A", "K", "Q", "J"].includes(rank)) {
-      ctx.strokeText(suit.symbol, centerX, centerY);
-      ctx.fillStyle = grad;
-      ctx.fillText(suit.symbol, centerX, centerY);
-    } else {
-      ctx.strokeText(rank, centerX, centerY);
-      ctx.fillStyle = grad;
-      ctx.fillText(rank, centerX, centerY);
-    }
+    // small corner label (one diagonal)
+    const corner = `${rank}${suit.symbol}`;
+    ctx.save();
+    ctx.font = S.fontCorner;
+    ctx.fillStyle = suit.color;
+    ctx.textBaseline = "top";
+    ctx.fillText(corner, 8, 6);
+    ctx.translate(S.width - 8, S.height - 6);
+    ctx.rotate(Math.PI);
+    ctx.fillText(corner, 0, 0);
     ctx.restore();
 
     return Texture.from(canvas);
   }
 
-  // === Helpers ===
-
-  /** Draw rounded rectangle */
   private roundedRect(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -182,30 +138,5 @@ export class CardFactory {
     ctx.arcTo(x, y + h, x, y, rr);
     ctx.arcTo(x, y, x + w, y, rr);
     ctx.closePath();
-  }
-
-  /** Soft drop shadow behind card */
-  private drawShadow(ctx: CanvasRenderingContext2D, S: CardStyle) {
-    ctx.save();
-    ctx.shadowColor = S.shadow;
-    ctx.shadowBlur = 22;
-    ctx.shadowOffsetY = 5;
-    this.roundedRect(ctx, 6, 8, S.width - 12, S.height - 12, S.radius);
-    ctx.fillStyle = "rgba(0,0,0,0)";
-    ctx.fill();
-    ctx.restore();
-  }
-
-  /** Glossy reflection layer on top */
-  private drawGloss(ctx: CanvasRenderingContext2D, S: CardStyle) {
-    ctx.save();
-    const pad = 10;
-    this.roundedRect(ctx, pad, pad, S.width - pad * 2, S.height * 0.45, S.radius * 0.8);
-    const g = ctx.createLinearGradient(0, pad, 0, S.height * 0.45);
-    g.addColorStop(0, S.gloss);
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.restore();
   }
 }
