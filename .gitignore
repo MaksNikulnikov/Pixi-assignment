@@ -7,7 +7,6 @@ pnpm-debug.log*
 *.log
 
 # Build / cache
-dist/
 build/
 .vite/
 .cache/
