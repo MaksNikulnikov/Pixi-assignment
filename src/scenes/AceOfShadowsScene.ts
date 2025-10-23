@@ -25,13 +25,13 @@ const FLIGHT_DURATION = 2;
 const ARC_MIN = 120;
 const ARC_VARIATION = 40;
 const SIDE_OFFSET = 40;
+const MAX_MOVES_PER_STACK = 6;
 
 // Easings
 const easeOutExpo = (t: number): number =>
   t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
 
-const easeOutSine = (t: number): number =>
-  Math.sin((t * Math.PI) / 2);
+const easeOutSine = (t: number): number => Math.sin((t * Math.PI) / 2);
 
 const CARD_MOVE_EASING = easeOutExpo;
 const STACK_EASING = easeOutSine;
@@ -215,8 +215,7 @@ export class AceOfShadowsScene extends BaseScene {
         const c = cards[i];
         if (c.parent !== stack) continue;
         const newY =
-          startPositions[i] +
-          (targetPositions[i] - startPositions[i]) * eased;
+          startPositions[i] + (targetPositions[i] - startPositions[i]) * eased;
         c.x = 0;
         c.y = newY;
         stack.setChildIndex(c, i);
@@ -234,17 +233,28 @@ export class AceOfShadowsScene extends BaseScene {
 
   private startCycle() {
     if (this.timer) return;
+    let movesFromCurrent = 0;
 
     this.timer = window.setInterval(() => {
       const src = this.activeStackIndex;
       const targets = this.nextTargets[src];
       const target = targets[this.nextTargetStep];
 
-      this.launchCard(src, target);
-
-      this.nextTargetStep = (this.nextTargetStep + 1) % targets.length;
       if (this.decks[src].length === 0) {
         this.activeStackIndex = (this.activeStackIndex + 1) % STACK_COUNT;
+        movesFromCurrent = 0;
+        this.nextTargetStep = 0;
+        return;
+      }
+
+      this.launchCard(src, target);
+
+      movesFromCurrent++;
+      this.nextTargetStep = (this.nextTargetStep + 1) % targets.length;
+
+      if (movesFromCurrent >= MAX_MOVES_PER_STACK) {
+        this.activeStackIndex = (this.activeStackIndex + 1) % STACK_COUNT;
+        movesFromCurrent = 0;
         this.nextTargetStep = 0;
       }
     }, MOVE_INTERVAL_MS);
