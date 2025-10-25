@@ -5,7 +5,7 @@ const host = document.getElementById('app') as HTMLDivElement
 const game = new AppGame({ host })
 
 
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("./service-worker.js")

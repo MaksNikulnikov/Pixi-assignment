@@ -95,6 +95,13 @@ export class AppGame {
     wrap.appendChild(this.uiRoot);
     this.host.appendChild(wrap);
 
+    // === Fullscreen ===
+    setTimeout(() => this.requestFullscreen(), 100);
+    document.addEventListener("fullscreenchange", () => {
+      const inFullscreen = !!document.fullscreenElement;
+      this.fsBtn.style.display = inFullscreen ? "none" : "inline-block";
+    });
+
     // === FPS Counter ===
     this.fps = new FpsCounter();
     this.fps.position.set(FPS_MARGIN, FPS_MARGIN);
