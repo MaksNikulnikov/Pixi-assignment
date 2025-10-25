@@ -1,6 +1,6 @@
 {
   "name": "Pixi-assignment",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,6 @@
     "vite": "^5.4.8"
   },
   "dependencies": {
-    "@pixi/filter-drop-shadow": "^5.2.0",
     "pixi.js": "^7.4.0"
   }
 }

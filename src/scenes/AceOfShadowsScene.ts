@@ -1,5 +1,4 @@
-import { Container, Sprite, Texture } from "pixi.js";
-import { DropShadowFilter } from "@pixi/filter-drop-shadow";
+import { Container, Sprite, Texture, Graphics } from "pixi.js";
 import { BaseScene } from "@scenes/BaseScene";
 import { GAME_SIZE } from "@config/gameSize";
 import { BACKGROUND_COLORS } from "@config/backgroundColors";
@@ -30,16 +29,17 @@ const MAX_MOVES_PER_STACK = 6;
 // Easings
 const easeOutExpo = (t: number): number =>
   t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
-
 const easeOutSine = (t: number): number => Math.sin((t * Math.PI) / 2);
-
 const CARD_MOVE_EASING = easeOutExpo;
 const STACK_EASING = easeOutSine;
 
-// Visual
+// Shadow configuration
 const SHADOW_COLOR = 0x000000;
-const SHADOW_BLUR = 6;
-const SHADOW_ALPHA = 0.6;
+const SHADOW_ALPHA = 0.25;
+const SHADOW_WIDTH = 78;
+const SHADOW_HEIGHT = 112;
+const SHADOW_RADIUS = 11;
+const SHADOW_SCALE = 0.92;
 
 // Cards
 const SUITS = ["spade", "heart", "diamond", "club"] as const;
@@ -54,7 +54,7 @@ type RankKey = (typeof RANKS)[number];
 export class AceOfShadowsScene extends BaseScene {
   private factory!: CardFactory;
   private stacks: Container[] = [];
-  private decks: Sprite[][] = [];
+  private decks: Container[][] = [];
   private nextTargets: number[][] = [];
 
   private timer?: number;
@@ -65,7 +65,8 @@ export class AceOfShadowsScene extends BaseScene {
   private nextTargetStep = 0;
 
   private flyingCards: {
-    card: Sprite;
+    card: Container;
+    shadow: Graphics;
     fromIndex: number;
     toIndex: number;
     startTime: number;
@@ -75,7 +76,6 @@ export class AceOfShadowsScene extends BaseScene {
     startRot: number;
     endRot: number;
     arcHeight: number;
-    shadow: DropShadowFilter;
   }[] = [];
 
   constructor() {
@@ -137,19 +137,46 @@ export class AceOfShadowsScene extends BaseScene {
     }
   }
 
+  private createCardWithShadow(texture: Texture): Container {
+    const container = new Container();
+
+    // --- Shadow ---
+    const shadow = new Graphics();
+    shadow.beginFill(SHADOW_COLOR, SHADOW_ALPHA);
+    shadow.drawRoundedRect(
+      -SHADOW_WIDTH / 2,
+      -SHADOW_HEIGHT / 2,
+      SHADOW_WIDTH,
+      SHADOW_HEIGHT,
+      SHADOW_RADIUS
+    );
+    shadow.endFill();
+    shadow.position.set(0, 0);
+    shadow.visible = false;
+    container.addChild(shadow);
+
+    // --- Card sprite ---
+    const card = new Sprite(texture);
+    card.anchor.set(0.5);
+    card.scale.set(CARD_SCALE);
+    container.addChild(card);
+
+    (container as any)._shadow = shadow;
+
+    return container;
+  }
+
   private fillStacks(deckTextures: Record<SuitKey, Record<RankKey, Texture>>) {
     const baseCards = SUITS.flatMap((suit) =>
       RANKS.map((rank) => ({ suit, rank }))
     );
 
-    const allCards: Sprite[] = [];
+    const allCards: Container[] = [];
     for (let i = 0; i < TOTAL_AMOUNT; i++) {
       const { suit, rank } = baseCards[i % baseCards.length];
       const tex = deckTextures[suit][rank];
-      const card = new Sprite(tex);
-      card.anchor.set(0.5);
-      card.scale.set(CARD_SCALE);
-      allCards.push(card);
+      const cardContainer = this.createCardWithShadow(tex);
+      allCards.push(cardContainer);
     }
 
     // Shuffle and distribute evenly
@@ -269,20 +296,14 @@ export class AceOfShadowsScene extends BaseScene {
     const targetStack = this.stacks[toIndex];
 
     const card = sourceDeck.pop()!;
+    const shadow = (card as any)._shadow as Graphics;
+
     const startGlobal = sourceStack.toGlobal(card.position);
     this.view.addChild(card);
     card.position.copyFrom(this.view.toLocal(startGlobal));
 
     const startRot = sourceStack.rotation;
     const endRot = targetStack.rotation;
-
-    const shadow = new DropShadowFilter({
-      offset: { x: 0, y: 0 },
-      blur: SHADOW_BLUR,
-      alpha: 0,
-      color: SHADOW_COLOR,
-    });
-    card.filters = [shadow];
 
     const startPos = { x: card.position.x, y: card.position.y };
     const arcHeight = ARC_MIN + Math.random() * ARC_VARIATION;
@@ -295,8 +316,12 @@ export class AceOfShadowsScene extends BaseScene {
       return this.view.toLocal(endGlobal);
     };
 
+    shadow.visible = true;
+    shadow.alpha = SHADOW_ALPHA;
+
     this.flyingCards.push({
       card,
+      shadow,
       fromIndex,
       toIndex,
       startTime: performance.now(),
@@ -306,7 +331,6 @@ export class AceOfShadowsScene extends BaseScene {
       startRot,
       endRot,
       arcHeight,
-      shadow,
     });
 
     this.relayoutStack(fromIndex);
@@ -318,12 +342,10 @@ export class AceOfShadowsScene extends BaseScene {
     for (let i = this.flyingCards.length - 1; i >= 0; i--) {
       const f = this.flyingCards[i];
       const elapsed = now - f.startTime;
-
       const rawT = Math.min(elapsed / f.duration, 1);
       const t = CARD_MOVE_EASING(rawT);
 
       const end = f.endPos();
-
       const xLinear = f.startPos.x + (end.x - f.startPos.x) * t;
       const yLinear = f.startPos.y + (end.y - f.startPos.y) * t;
       const y = yLinear - f.arcHeight * Math.sin(t * Math.PI);
@@ -341,15 +363,8 @@ export class AceOfShadowsScene extends BaseScene {
 
       f.card.position.set(x, y);
       f.card.rotation = f.startRot + (f.endRot - f.startRot) * t;
-
-      const s = CARD_SCALE + 0.2 * Math.sin(t * Math.PI);
-      f.card.scale.set(s);
-
-      const sin = Math.sin(t * Math.PI);
-      f.shadow.alpha = SHADOW_ALPHA * sin;
-      f.shadow.blur = SHADOW_BLUR + 10 * sin;
-      f.shadow.offset.y = 5 + 10 * sin;
-
+      f.card.scale.set(CARD_SCALE + 0.2 * Math.sin(t * Math.PI));
+      f.shadow.scale.set(SHADOW_SCALE + 0.2 * Math.sin(t * Math.PI));
       if (rawT >= 1) {
         const globalNow = f.card.parent.toGlobal(f.card.position);
         const globalRot = f.card.rotation;
@@ -362,7 +377,7 @@ export class AceOfShadowsScene extends BaseScene {
         f.card.rotation = globalRot - targetStack.rotation;
         targetDeck.push(f.card);
 
-        f.card.filters = [];
+        f.shadow.visible = false;
         f.card.scale.set(CARD_SCALE);
 
         this.relayoutStack(f.fromIndex);
